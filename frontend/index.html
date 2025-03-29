@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mood Music - Emotion-Based Recommendations</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Mood Music</h1>
+            <p class="tagline">Music that matches how you feel</p>
+        </header>
+
+        <div id="sensor-status">
+            <div class="sensor-icon">
+                <i class="fas fa-heartbeat"></i>
+                <span id="heart-rate-status">Detecting...</span>
+            </div>
+            <div class="sensor-icon">
+                <i class="fas fa-camera"></i>
+                <span id="camera-status">Analyzing...</span>
+            </div>
+        </div>
+        
+        <main>
+            <div id="mood-detection" class="card">
+                <div class="mood-container">
+                    <h2>You feel <span id="detected-mood">analyzing...</span></h2>
+                    <div id="mood-emoji">😐</div>
+                </div>
+                
+                <div id="playlist-preview">
+                    <h3>Suggested Playlist</h3>
+                    <div id="playlist-container">
+                        <div class="loader"></div>
+                        <p class="loading-text">Creating your personalized playlist...</p>
+                    </div>
+                </div>
+                
+                <button id="different-mood-btn" class="primary-btn">
+                    <i class="fas fa-music"></i> Feeling something different?
+                </button>
+            </div>
+            
+            <div id="context-form" class="card hidden">
+                <h2>Tell us more</h2>
+                <form id="user-context-form">
+                    <div class="form-group">
+                        <label for="activity">What are you doing?</label>
+                        <select id="activity" name="activity" required>
+                            <option value="" disabled selected>Select an activity</option>
+                            <option value="working">Working/Studying</option>
+                            <option value="exercising">Exercising</option>
+                            <option value="relaxing">Relaxing</option>
+                            <option value="commuting">Commuting</option>
+                            <option value="socializing">Socializing</option>
+                            <option value="sleeping">Preparing to sleep</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="desired-mood">How do you want to feel?</label>
+                        <div class="mood-buttons">
+                            <button type="button" class="mood-btn" data-mood="energized">
+                                <span class="emoji">⚡</span>
+                                <span class="mood-label">More energized</span>
+                            </button>
+                            <button type="button" class="mood-btn" data-mood="calm">
+                                <span class="emoji">😌</span>
+                                <span class="mood-label">More calm</span>
+                            </button>
+                            <button type="button" class="mood-btn" data-mood="same">
+                                <span class="emoji">✓</span>
+                                <span class="mood-label">Stay the same</span>
+                            </button>
+                        </div>
+                        <input type="hidden" id="desired-mood" name="desired-mood" required>
+                    </div>
+                    
+                    <button type="submit" id="submit-context" class="primary-btn">
+                        <i class="fas fa-sync-alt"></i> Update My Recommendations
+                    </button>
+                </form>
+            </div>
+            
+            <div id="playlist-full" class="card hidden">
+                <div class="playlist-header">
+                    <h2 id="playlist-title">Your Personalized Playlist</h2>
+                    <button id="refresh-playlist" class="icon-btn">
+                        <i class="fas fa-redo"></i>
+                    </button>
+                </div>
+                <ul id="track-list">
+                    <!-- Tracks will be populated here via JavaScript -->
+                </ul>
+                <button id="open-spotify" class="secondary-btn">
+                    <i class="fab fa-spotify"></i> Open in Spotify
+                </button>
+            </div>
+        </main>
+        
+        <div id="sensor-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2>Sensors Required</h2>
+                <p>Please allow access to:</p>
+                <ul>
+                    <li>Camera - to detect facial expressions</li>
+                    <li>Heart rate sensor - to measure physiological responses</li>
+                </ul>
+                <button id="start-sensors" class="primary-btn">Begin Sensing</button>
+                <p class="note">Your data is processed locally and not stored permanently.</p>
+            </div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
