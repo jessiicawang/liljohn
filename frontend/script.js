@@ -1,393 +1,377 @@
-// DOM Elements
-const sensorModal = document.getElementById('sensor-modal');
-const startSensorsBtn = document.getElementById('start-sensors');
-const heartRateStatus = document.getElementById('heart-rate-status');
-const cameraStatus = document.getElementById('camera-status');
-const detectedMood = document.getElementById('detected-mood');
-const moodEmoji = document.getElementById('mood-emoji');
-const differentMoodBtn = document.getElementById('different-mood-btn');
-const contextForm = document.getElementById('context-form');
-const moodDetection = document.getElementById('mood-detection');
-const playlistFull = document.getElementById('playlist-full');
-const moodButtons = document.querySelectorAll('.mood-btn');
-const userContextForm = document.getElementById('user-context-form');
-const desiredMoodInput = document.getElementById('desired-mood');
-const playlistContainer = document.getElementById('playlist-container');
-const trackList = document.getElementById('track-list');
-const refreshPlaylistBtn = document.getElementById('refresh-playlist');
-const openSpotifyBtn = document.getElementById('open-spotify');
-
-// Global Variables
-let currentMood = null;
-let sensorData = {
-    heartRate: null,
-    facialExpression: null
-};
-let userContext = {
-    activity: null,
-    desiredMood: null
-};
-let currentPlaylist = null;
-
-// Emotion mapping
-const emotions = {
-    happy: {
-        emoji: "😊",
-        spotifyParams: { min_valence: 0.7, target_energy: 0.8 },
-        description: "happy"
-    },
-    sad: {
-        emoji: "😔",
-        spotifyParams: { max_valence: 0.4, target_energy: 0.4 },
-        description: "sad"
-    },
-    angry: {
-        emoji: "😠",
-        spotifyParams: { target_energy: 0.9, target_tempo: 140 },
-        description: "angry"
-    },
-    relaxed: {
-        emoji: "😌",
-        spotifyParams: { max_energy: 0.4, target_acousticness: 0.8 },
-        description: "relaxed"
-    },
-    energetic: {
-        emoji: "⚡",
-        spotifyParams: { min_energy: 0.8, target_tempo: 130 },
-        description: "energetic"
-    },
-    focused: {
-        emoji: "🧠",
-        spotifyParams: { target_instrumentalness: 0.7, max_energy: 0.6 },
-        description: "focused"
-    },
-    stressed: {
-        emoji: "😰",
-        spotifyParams: { max_energy: 0.4, target_acousticness: 0.7 },
-        description: "stressed"
-    },
-    neutral: {
-        emoji: "😐",
-        spotifyParams: { target_valence: 0.5, target_energy: 0.5 },
-        description: "neutral"
-    }
-};
-
-// Initialization
 document.addEventListener('DOMContentLoaded', () => {
-    // Show sensor modal on start
-    sensorModal.classList.remove('hidden');
+    // DOM Elements
+    const startBtn = document.getElementById('start-btn');
+    const spotifyLoginBtn = document.getElementById('spotify-login-btn');
+    const captureBtn = document.getElementById('capture-btn');
+    const skipCameraBtn = document.getElementById('skip-camera-btn');
+    const approvePermissionsBtn = document.getElementById('approve-permissions');
+    const openInSpotifyBtn = document.getElementById('open-in-spotify');
+    const startOverBtn = document.getElementById('start-over');
+    const goalButtons = document.querySelectorAll('.goal-btn');
+    const authModal = document.getElementById('auth-modal');
+    const closeModal = document.querySelector('.close-modal');
     
-    // Set up event listeners
-    setupEventListeners();
-});
-
-// Set up all event listeners
-function setupEventListeners() {
-    // Start sensors button
-    startSensorsBtn.addEventListener('click', () => {
-        sensorModal.classList.add('hidden');
-        initializeSensors();
-    });
+    // Video elements
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const cameraStatus = document.getElementById('camera-status');
     
-    // Different mood button
-    differentMoodBtn.addEventListener('click', () => {
-        moodDetection.classList.add('hidden');
-        contextForm.classList.remove('hidden');
-    });
+    // App state
+    const state = {
+        detectedEmotion: null,
+        selectedGoal: null,
+        accessToken: null,
+        refreshToken: null,
+        playlistId: null,
+        cameraReady: false,
+        userSkippedCamera: false
+    };
     
-    // Mood selection buttons
-    moodButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            // Remove selected class from all buttons
-            moodButtons.forEach(btn => btn.classList.remove('selected'));
+    // Navigation between screens
+    function showScreen(screenId) {
+        document.querySelectorAll('.screen').forEach(screen => {
+            screen.classList.remove('active');
+        });
+        document.getElementById(screenId).classList.add('active');
+    }
+    
+    // Initialize the camera
+    async function initCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'user',
+                    width: { ideal: 640 },
+                    height: { ideal: 480 } 
+                } 
+            });
             
-            // Add selected class to clicked button
+            video.srcObject = stream;
+            state.cameraReady = true;
+            captureBtn.disabled = false;
+            cameraStatus.textContent = 'Camera ready! Click "Capture" to detect your mood.';
+        } catch (err) {
+            console.error('Error accessing camera:', err);
+            cameraStatus.textContent = 'Could not access camera. Please ensure permissions are granted.';
+            skipCameraBtn.textContent = 'Continue without camera';
+        }
+    }
+    
+    // Capture image from camera
+    function captureImage() {
+        return new Promise((resolve) => {
+            const context = canvas.getContext('2d');
+            // Set canvas dimensions to match video
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            // Draw the current video frame onto the canvas
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            // Convert canvas to data URL (base64 encoded image)
+            const imageData = canvas.toDataURL('image/jpeg');
+            resolve(imageData);
+        });
+    }
+    
+    // Send image to backend for emotion detection
+    async function detectEmotion(imageData) {
+        try {
+            const response = await fetch('/detect-emotion', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ image: imageData })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to detect emotion');
+            }
+            
+            const data = await response.json();
+            return data.emotion;
+        } catch (error) {
+            console.error('Error detecting emotion:', error);
+            return 'neutral'; // Default fallback emotion
+        }
+    }
+    
+    // Update the UI based on detected emotion
+    function updateMoodUI(emotion) {
+        const detectedMoodElement = document.getElementById('detected-mood');
+        const moodEmojiElement = document.getElementById('mood-emoji');
+        
+        detectedMoodElement.textContent = emotion;
+        
+        // Map emotions to emojis
+        const emojiMap = {
+            'happy': '😊',
+            'sad': '😢',
+            'angry': '😠',
+            'surprised': '😮',
+            'fearful': '😨',
+            'disgusted': '🤢',
+            'contempt': '😒',
+            'neutral': '😐'
+        };
+        
+        moodEmojiElement.textContent = emojiMap[emotion] || '😐';
+    }
+    
+    // Authenticate with Spotify
+    function authenticateWithSpotify() {
+        // Client ID from your Spotify Developer Dashboard
+        const clientId = '475798783ee1433e9ab36ad3b6ddd1c0';
+        const redirectUri = 'http://localhost:5000/callback';
+        
+        // Scopes needed for the application
+        const scopes = [
+            'user-read-private',
+            'user-read-email',
+            'user-top-read',
+            'user-read-recently-played',
+            'playlist-modify-public',
+            'playlist-modify-private'
+        ].join(' ');
+        
+        // State parameter for CSRF protection
+        const state = generateRandomString(16);
+        localStorage.setItem('spotify_auth_state', state);
+        
+        // Build the authorization URL
+        const authUrl = new URL('https://accounts.spotify.com/authorize');
+        authUrl.searchParams.append('response_type', 'code');
+        authUrl.searchParams.append('client_id', clientId);
+        authUrl.searchParams.append('scope', scopes);
+        authUrl.searchParams.append('redirect_uri', redirectUri);
+        authUrl.searchParams.append('state', state);
+        
+        // Redirect to Spotify authorization page
+        window.location.href = authUrl.toString();
+    }
+    
+    // Generate a random string for state parameter
+    function generateRandomString(length) {
+        const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let text = '';
+        
+        for (let i = 0; i < length; i++) {
+            text += possible.charAt(Math.floor(Math.random() * possible.length));
+        }
+        
+        return text;
+    }
+    
+    // Check if we're returning from Spotify auth
+    function checkForSpotifyCallback() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const state = urlParams.get('state');
+        const storedState = localStorage.getItem('spotify_auth_state');
+        
+        if (code && state && state === storedState) {
+            // Clear the state from storage
+            localStorage.removeItem('spotify_auth_state');
+            
+            // Exchange the code for tokens
+            exchangeCodeForTokens(code);
+            return true;
+        }
+        
+        return false;
+    }
+    
+    // Exchange authorization code for access and refresh tokens
+    async function exchangeCodeForTokens(code) {
+        try {
+            const response = await fetch('/exchange-token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ code })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to exchange code for tokens');
+            }
+            
+            const data = await response.json();
+            state.accessToken = data.access_token;
+            state.refreshToken = data.refresh_token;
+            
+            // Remove code and state from URL without refreshing the page
+            window.history.replaceState({}, document.title, window.location.pathname);
+            
+            // Continue to creating playlist
+            showScreen('loading-screen');
+            createPlaylist();
+        } catch (error) {
+            console.error('Error exchanging code for tokens:', error);
+            alert('Failed to authenticate with Spotify. Please try again.');
+            showScreen('login-screen');
+        }
+    }
+    
+    // Create a playlist based on mood and goal
+    async function createPlaylist() {
+        try {
+            const response = await fetch('/create-playlist', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    emotion: state.detectedEmotion || 'neutral',
+                    goal: state.selectedGoal || 'maintain',
+                    access_token: state.accessToken
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to create playlist');
+            }
+            
+            const data = await response.json();
+            state.playlistId = data.playlist_id;
+            
+            // Display the playlist
+            displayPlaylist(data);
+            showScreen('result-screen');
+        } catch (error) {
+            console.error('Error creating playlist:', error);
+            alert('Failed to create playlist. Please try again.');
+            showScreen('mood-detected-screen');
+        }
+    }
+    
+    // Display the created playlist
+    function displayPlaylist(playlistData) {
+        const playlistName = document.getElementById('playlist-name');
+        const playlistDescription = document.getElementById('playlist-description');
+        const playlistCover = document.getElementById('playlist-cover');
+        const trackList = document.getElementById('track-list');
+        
+        playlistName.textContent = playlistData.name;
+        playlistDescription.textContent = playlistData.description;
+        
+        if (playlistData.images && playlistData.images.length > 0) {
+            playlistCover.src = playlistData.images[0].url;
+        }
+        
+        // Clear previous tracks
+        trackList.innerHTML = '';
+        
+        // Add tracks to the list
+        playlistData.tracks.forEach((track, index) => {
+            const trackItem = document.createElement('div');
+            trackItem.className = 'track-item';
+            
+            trackItem.innerHTML = `
+                <div class="track-number">${index + 1}</div>
+                <div class="track-image">
+                    <img src="${track.album.images[2].url}" alt="${track.album.name}">
+                </div>
+                <div class="track-info">
+                    <div class="track-name">${track.name}</div>
+                    <div class="track-artist">${track.artists.map(artist => artist.name).join(', ')}</div>
+                </div>
+            `;
+            
+            trackList.appendChild(trackItem);
+        });
+        
+        // Update the "Open in Spotify" button
+        openInSpotifyBtn.onclick = () => {
+            window.open(playlistData.external_url, '_blank');
+        };
+    }
+    
+    // Event Listeners
+    startBtn.addEventListener('click', () => {
+        authModal.classList.add('show');
+    });
+    
+    approvePermissionsBtn.addEventListener('click', () => {
+        authModal.classList.remove('show');
+        showScreen('camera-screen');
+        initCamera();
+    });
+    
+    closeModal.addEventListener('click', () => {
+        authModal.classList.remove('show');
+    });
+    
+    captureBtn.addEventListener('click', async () => {
+        if (state.cameraReady) {
+            // Show loading state
+            captureBtn.disabled = true;
+            cameraStatus.textContent = 'Analyzing your expression...';
+            
+            // Capture and analyze the image
+            const imageData = await captureImage();
+            const emotion = await detectEmotion(imageData);
+            
+            // Stop the camera stream
+            const stream = video.srcObject;
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Update app state and UI
+            state.detectedEmotion = emotion;
+            updateMoodUI(emotion);
+            showScreen('mood-detected-screen');
+        }
+    });
+    
+    skipCameraBtn.addEventListener('click', () => {
+        // Stop the camera if it's running
+        const stream = video.srcObject;
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
+        
+        state.userSkippedCamera = true;
+        state.detectedEmotion = 'neutral';
+        updateMoodUI('neutral');
+        showScreen('mood-detected-screen');
+    });
+    
+    goalButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            // Remove selection from all buttons
+            goalButtons.forEach(btn => btn.classList.remove('selected'));
+            
+            // Add selection to clicked button
             button.classList.add('selected');
             
-            // Update hidden input value
-            desiredMoodInput.value = button.dataset.mood;
+            // Update state
+            state.selectedGoal = button.dataset.goal;
+            
+            // Continue to Spotify login
+            showScreen('login-screen');
         });
     });
     
-    // Context form submission
-    userContextForm.addEventListener('submit', (e) => {
-        e.preventDefault();
+    spotifyLoginBtn.addEventListener('click', authenticateWithSpotify);
+    
+    startOverBtn.addEventListener('click', () => {
+        // Reset state
+        state.detectedEmotion = null;
+        state.selectedGoal = null;
+        state.playlistId = null;
+        state.cameraReady = false;
+        state.userSkippedCamera = false;
         
-        // Get form values
-        const activity = document.getElementById('activity').value;
-        const desiredMood = desiredMoodInput.value;
+        // Remove selection from goal buttons
+        goalButtons.forEach(btn => btn.classList.remove('selected'));
         
-        if (!activity || !desiredMood) {
-            alert('Please complete all fields');
-            return;
-        }
-        
-        // Save user context
-        userContext.activity = activity;
-        userContext.desiredMood = desiredMood;
-        
-        // Generate recommendations based on context
-        generateContextBasedRecommendations();
-        
-        // Hide form, show playlist
-        contextForm.classList.add('hidden');
-        playlistFull.classList.remove('hidden');
+        // Go back to start
+        showScreen('welcome-screen');
     });
     
-    // Refresh playlist button
-    refreshPlaylistBtn.addEventListener('click', () => {
-        if (userContext.activity && userContext.desiredMood) {
-            generateContextBasedRecommendations();
-        } else {
-            generateMoodBasedRecommendations();
-        }
-    });
-    
-    // Open Spotify button (placeholder functionality)
-    openSpotifyBtn.addEventListener('click', () => {
-        alert('This would open the playlist in Spotify. Integration with Spotify API required.');
-    });
-}
-
-// Initialize sensors
-function initializeSensors() {
-    // Update sensor status
-    heartRateStatus.textContent = 'Connecting...';
-    cameraStatus.textContent = 'Connecting...';
-    
-    // Simulate heart rate sensor connection (would be replaced with actual sensor API)
-    setTimeout(() => {
-        heartRateStatus.textContent = 'Connected';
-        simulateHeartRateSensor();
-    }, 1500);
-    
-    // Simulate camera connection (would be replaced with actual camera API)
-    setTimeout(() => {
-        cameraStatus.textContent = 'Connected';
-        simulateCameraCapture();
-    }, 2000);
-}
-
-// Simulate heart rate sensor data
-function simulateHeartRateSensor() {
-    // Simulate heart rate between 60-100 BPM
-    const heartRate = Math.floor(Math.random() * 40) + 60;
-    sensorData.heartRate = heartRate;
-    
-    // Check if both sensors have data
-    checkSensorData();
-    
-    // Continue simulation (in real app, this would be continuous monitoring)
-    setTimeout(simulateHeartRateSensor, 5000);
-}
-
-// Simulate camera capture for facial expression
-function simulateCameraCapture() {
-    // Simulate facial expression detection
-    const expressions = ['happy', 'sad', 'angry', 'relaxed', 'energetic', 'focused', 'stressed', 'neutral'];
-    const expression = expressions[Math.floor(Math.random() * expressions.length)];
-    
-    sensorData.facialExpression = expression;
-    
-    // Check if both sensors have data
-    checkSensorData();
-    
-    // In a real app, this would be triggered by the camera API
-}
-
-// Check if both sensors have data and determine mood
-function checkSensorData() {
-    if (sensorData.heartRate && sensorData.facialExpression) {
-        determineMood();
+    // Check if returning from Spotify auth
+    if (checkForSpotifyCallback()) {
+        showScreen('loading-screen');
     }
-}
-
-// Determine mood based on sensor data
-function determineMood() {
-    // In a real app, this would use ML to combine heart rate and facial expression
-    // For this demo, we'll just use the facial expression
-    const mood = sensorData.facialExpression;
-    
-    // Update UI with mood
-    updateMoodDisplay(mood);
-    
-    // Generate recommendations based on mood
-    generateMoodBasedRecommendations();
-}
-
-// Update mood display
-function updateMoodDisplay(mood) {
-    currentMood = mood;
-    detectedMood.textContent = emotions[mood].description;
-    moodEmoji.textContent = emotions[mood].emoji;
-}
-
-// Generate recommendations based on detected mood
-function generateMoodBasedRecommendations() {
-    // Show loading state
-    playlistContainer.innerHTML = `
-        <div class="loader"></div>
-        <p class="loading-text">Creating your personalized playlist...</p>
-    `;
-    
-    // Simulate API call delay
-    setTimeout(() => {
-        // This would be replaced with actual Spotify API calls
-        currentPlaylist = generateMockPlaylist(currentMood);
-        
-        // Display preview in the mood detection card
-        displayPlaylistPreview();
-    }, 2000);
-}
-
-// Generate recommendations based on user context
-function generateContextBasedRecommendations() {
-    // Update playlist title based on context
-    const playlistTitle = document.getElementById('playlist-title');
-    
-    switch(userContext.desiredMood) {
-        case 'energized':
-            playlistTitle.textContent = `Music to energize your ${userContext.activity}`;
-            break;
-        case 'calm':
-            playlistTitle.textContent = `Music to calm your ${userContext.activity}`;
-            break;
-        case 'same':
-            playlistTitle.textContent = `Music to match your ${userContext.activity}`;
-            break;
-    }
-    
-    // Would adjust mood parameters based on user context
-    let adjustedMood = currentMood;
-    
-    if (userContext.desiredMood === 'energized') {
-        // Adjust towards more energetic regardless of current mood
-        adjustedMood = 'energetic';
-    } else if (userContext.desiredMood === 'calm') {
-        // Adjust towards more relaxed regardless of current mood
-        adjustedMood = 'relaxed';
-    }
-    
-    // Generate playlist with adjusted parameters
-    currentPlaylist = generateMockPlaylist(adjustedMood);
-    
-    // Display the full playlist
-    displayFullPlaylist();
-}
-
-// Display playlist preview in the mood detection card
-function displayPlaylistPreview() {
-    // Show just the first 3 tracks in preview
-    const previewTracks = currentPlaylist.slice(0, 3);
-    
-    let previewHTML = `
-        <h3>Suggested Playlist</h3>
-        <ul class="preview-tracks">
-    `;
-    
-    previewTracks.forEach(track => {
-        previewHTML += `
-            <li class="track-item">
-                <img src="${track.image}" alt="${track.title}" class="track-image">
-                <div class="track-info">
-                    <div class="track-title">${track.title}</div>
-                    <div class="track-artist">${track.artist}</div>
-                </div>
-            </li>
-        `;
-    });
-    
-    previewHTML += `</ul>`;
-    
-    playlistContainer.innerHTML = previewHTML;
-}
-
-// Display full playlist
-function displayFullPlaylist() {
-    let playlistHTML = '';
-    
-    currentPlaylist.forEach(track => {
-        playlistHTML += `
-            <li class="track-item">
-                <img src="${track.image}" alt="${track.title}" class="track-image">
-                <div class="track-info">
-                    <div class="track-title">${track.title}</div>
-                    <div class="track-artist">${track.artist}</div>
-                </div>
-                <div class="track-controls">
-                    <button class="icon-btn">
-                        <i class="fas fa-play"></i>
-                    </button>
-                </div>
-            </li>
-        `;
-    });
-    
-    trackList.innerHTML = playlistHTML;
-}
-
-// Generate mock playlist based on mood
-function generateMockPlaylist(mood) {
-    // This would be replaced with actual Spotify API integration
-    const mockPlaylists = {
-        happy: [
-            { title: "Happy", artist: "Pharrell Williams", image: "/api/placeholder/50/50" },
-            { title: "Good as Hell", artist: "Lizzo", image: "/api/placeholder/50/50" },
-            { title: "Walking on Sunshine", artist: "Katrina & The Waves", image: "/api/placeholder/50/50" },
-            { title: "Can't Stop the Feeling!", artist: "Justin Timberlake", image: "/api/placeholder/50/50" },
-            { title: "Uptown Funk", artist: "Mark Ronson ft. Bruno Mars", image: "/api/placeholder/50/50" }
-        ],
-        sad: [
-            { title: "Someone Like You", artist: "Adele", image: "/api/placeholder/50/50" },
-            { title: "Fix You", artist: "Coldplay", image: "/api/placeholder/50/50" },
-            { title: "When the Party's Over", artist: "Billie Eilish", image: "/api/placeholder/50/50" },
-            { title: "Skinny Love", artist: "Bon Iver", image: "/api/placeholder/50/50" },
-            { title: "All I Want", artist: "Kodaline", image: "/api/placeholder/50/50" }
-        ],
-        angry: [
-            { title: "Break Stuff", artist: "Limp Bizkit", image: "/api/placeholder/50/50" },
-            { title: "Bulls on Parade", artist: "Rage Against the Machine", image: "/api/placeholder/50/50" },
-            { title: "Master of Puppets", artist: "Metallica", image: "/api/placeholder/50/50" },
-            { title: "Killing in the Name", artist: "Rage Against the Machine", image: "/api/placeholder/50/50" },
-            { title: "Gives You Hell", artist: "The All-American Rejects", image: "/api/placeholder/50/50" }
-        ],
-        relaxed: [
-            { title: "Weightless", artist: "Marconi Union", image: "/api/placeholder/50/50" },
-            { title: "Strawberry Swing", artist: "Coldplay", image: "/api/placeholder/50/50" },
-            { title: "Gymnopédie No.1", artist: "Erik Satie", image: "/api/placeholder/50/50" },
-            { title: "Holocene", artist: "Bon Iver", image: "/api/placeholder/50/50" },
-            { title: "Pure Shores", artist: "All Saints", image: "/api/placeholder/50/50" }
-        ],
-        energetic: [
-            { title: "Can't Hold Us", artist: "Macklemore & Ryan Lewis", image: "/api/placeholder/50/50" },
-            { title: "Don't Stop Me Now", artist: "Queen", image: "/api/placeholder/50/50" },
-            { title: "Levels", artist: "Avicii", image: "/api/placeholder/50/50" },
-            { title: "Titanium", artist: "David Guetta ft. Sia", image: "/api/placeholder/50/50" },
-            { title: "Shake It Off", artist: "Taylor Swift", image: "/api/placeholder/50/50" }
-        ],
-        focused: [
-            { title: "Experience", artist: "Ludovico Einaudi", image: "/api/placeholder/50/50" },
-            { title: "Night Mist", artist: "Brian Eno", image: "/api/placeholder/50/50" },
-            { title: "Metamorphosis One", artist: "Philip Glass", image: "/api/placeholder/50/50" },
-            { title: "Divenire", artist: "Ludovico Einaudi", image: "/api/placeholder/50/50" },
-            { title: "Tuesday", artist: "Busted", image: "/api/placeholder/50/50" }
-        ],
-        stressed: [
-            { title: "Breathe Me", artist: "Sia", image: "/api/placeholder/50/50" },
-            { title: "Orinoco Flow", artist: "Enya", image: "/api/placeholder/50/50" },
-            { title: "Warm Foothills", artist: "Alt-J", image: "/api/placeholder/50/50" },
-            { title: "The Scientist", artist: "Coldplay", image: "/api/placeholder/50/50" },
-            { title: "Ocean", artist: "John Butler", image: "/api/placeholder/50/50" }
-        ],
-        neutral: [
-            { title: "Clocks", artist: "Coldplay", image: "/api/placeholder/50/50" },
-            { title: "Crystalised", artist: "The xx", image: "/api/placeholder/50/50" },
-            { title: "Teardrop", artist: "Massive Attack", image: "/api/placeholder/50/50" },
-            { title: "Starlight", artist: "Muse", image: "/api/placeholder/50/50" },
-            { title: "Digital Love", artist: "Daft Punk", image: "/api/placeholder/50/50" }
-        ]
-    };
-    
-    return mockPlaylists[mood];
-}
+});

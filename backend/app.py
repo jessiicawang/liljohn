@@ -1,320 +1,186 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, redirect, jsonify, session, render_template
 import os
-from dotenv import load_dotenv
-import json
 import requests
-from PIL import Image
-import io
-import numpy as np
-from datetime import datetime
-
-# Import custom modules
-from emotion_api import detect_emotion_from_image
-from heart_rate_sensor import get_heart_rate
-from spotify_api import get_spotify_client, get_user_top_genres, get_recently_played
-from playlist_logic import generate_playlist_based_on_mood
+import base64
+import json
+import uuid
+from dotenv import load_dotenv
+from emotion_api import detect_emotion
+from spotify_api import get_spotify_tokens, refresh_spotify_token, get_user_profile, get_user_top_genres, get_recently_played, create_spotify_playlist, add_tracks_to_playlist
+from playlist_logic import generate_playlist_recommendations
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Flask app
-app = Flask(__name__)
+app = Flask(__name__, static_folder='.', static_url_path='')
 
-# Configure logging
-import logging
-logging.basicConfig(
-    filename='data/logs/app.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Configure Flask app
+app.secret_key = os.urandom(24)
+app.config['SESSION_TYPE'] = 'filesystem'
 
-# Constants
-MOOD_MAPPING = {
-    'happy': {'energy': 0.7, 'valence': 0.8, 'instrumentalness': 0.2},
-    'sad': {'energy': 0.4, 'valence': 0.3, 'instrumentalness': 0.4},
-    'angry': {'energy': 0.8, 'valence': 0.3, 'instrumentalness': 0.2},
-    'relaxed': {'energy': 0.3, 'valence': 0.6, 'instrumentalness': 0.5},
-    'energetic': {'energy': 0.9, 'valence': 0.7, 'instrumentalness': 0.1},
-    'focused': {'energy': 0.5, 'valence': 0.5, 'instrumentalness': 0.7}
-}
+# Spotify API credentials
+CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID", "475798783ee1433e9ab36ad3b6ddd1c0")
+CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", "afa1eb83dbb24aa5a122381fe5aae9b4")
+REDIRECT_URI = os.getenv("REDIRECT_URI", "http://localhost:5000/callback")
 
-# Goal-based adjustments
-GOAL_ADJUSTMENTS = {
-    'increase_energy': {'energy': 0.2, 'valence': 0.1},
-    'calm_down': {'energy': -0.2, 'valence': 0.0, 'instrumentalness': 0.2},
-    'stay_same': {'energy': 0.0, 'valence': 0.0, 'instrumentalness': 0.0}
-}
+@app.route('/')
+def index():
+    """Serve the main application page."""
+    return app.send_static_file('index.html')
 
-# Context adjustments
-CONTEXT_ADJUSTMENTS = {
-    'working': {'energy': -0.1, 'instrumentalness': 0.3},
-    'exercising': {'energy': 0.3, 'instrumentalness': -0.2},
-    'relaxing': {'energy': -0.3, 'valence': 0.1, 'instrumentalness': 0.1},
-    'socializing': {'energy': 0.1, 'valence': 0.2},
-    'studying': {'energy': -0.1, 'instrumentalness': 0.4, 'valence': -0.1}
-}
-
-@app.route("/")
-def home():
-    """Serve the home page"""
-    return "Mood-based Music Recommender API"
-
-@app.route("/detect_emotion", methods=["POST"])
-def detect_emotion():
-    """
-    Detect emotion from facial image and heart rate
-    
-    Expects:
-    - image: Base64 encoded image or file upload
-    - heart_rate: (Optional) Heart rate in BPM
-    
-    Returns:
-    - Detected mood and confidence scores
-    """
+@app.route('/detect-emotion', methods=['POST'])
+def process_emotion():
+    """Process the image and detect emotion using Microsoft Emotion API."""
     try:
-        data = {}
+        data = request.json
+        image_data = data.get('image')
         
-        # Handle image from request
-        if 'image' in request.files:
-            # Handle file upload
-            image_file = request.files['image']
-            image_bytes = image_file.read()
-            image = Image.open(io.BytesIO(image_bytes))
-        elif request.json and 'image_base64' in request.json:
-            # Handle base64 encoded image
-            import base64
-            image_data = base64.b64decode(request.json['image_base64'])
-            image = Image.open(io.BytesIO(image_data))
-        else:
-            return jsonify({"error": "No image provided"}), 400
+        # Remove data URL prefix if present
+        if image_data and ',' in image_data:
+            image_data = image_data.split(',')[1]
         
-        # Get heart rate data
-        if request.json and 'heart_rate' in request.json:
-            heart_rate = request.json['heart_rate']
-        else:
-            # Attempt to read from sensor if available
-            try:
-                heart_rate = get_heart_rate()
-            except Exception as e:
-                logger.warning(f"Could not get heart rate from sensor: {str(e)}")
-                heart_rate = None
+        # Detect emotion
+        emotion = detect_emotion(image_data)
         
-        # Detect emotion from image
-        emotion_results = detect_emotion_from_image(image)
+        return jsonify({'emotion': emotion})
+    except Exception as e:
+        print(f"Error detecting emotion: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/exchange-token', methods=['POST'])
+def exchange_token():
+    """Exchange authorization code for access and refresh tokens."""
+    try:
+        data = request.json
+        code = data.get('code')
         
-        # Combine emotion results with heart rate for more accurate assessment
-        # This is a simplified version - in production, you'd use a more sophisticated model
-        final_mood = emotion_results['dominant_emotion']
-        confidence = emotion_results['confidence']
+        if not code:
+            return jsonify({'error': 'Authorization code is required'}), 400
         
-        # If heart rate is available, adjust the mood assessment
-        if heart_rate:
-            # High heart rate might indicate excitement/stress
-            if heart_rate > 100 and final_mood in ['relaxed', 'sad']:
-                # Adjust confidence in the current mood
-                confidence *= 0.8
-                # Check secondary emotions
-                if 'secondary_emotions' in emotion_results:
-                    for emotion, score in emotion_results['secondary_emotions'].items():
-                        if emotion in ['excited', 'stressed', 'energetic']:
-                            if score * 1.2 > confidence:
-                                final_mood = emotion
-                                confidence = score * 1.2
+        # Exchange code for tokens
+        token_data = get_spotify_tokens(CLIENT_ID, CLIENT_SECRET, code, REDIRECT_URI)
         
-        # Log the detection
-        logger.info(f"Emotion detected: {final_mood} with confidence {confidence}")
+        if 'error' in token_data:
+            return jsonify({'error': token_data['error']}), 400
         
         return jsonify({
-            "mood": final_mood,
-            "confidence": confidence,
-            "heart_rate": heart_rate,
-            "timestamp": datetime.now().isoformat()
+            'access_token': token_data['access_token'],
+            'refresh_token': token_data['refresh_token'],
+            'expires_in': token_data['expires_in']
         })
-        
     except Exception as e:
-        logger.error(f"Error in emotion detection: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        print(f"Error exchanging token: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
-@app.route("/recommend_music", methods=["POST"])
-def recommend_music():
-    """
-    Recommend music based on detected mood, user goals, and context
-    
-    Expects:
-    - mood: Detected mood (happy, sad, etc.)
-    - goal: User goal (increase_energy, calm_down, stay_same)
-    - context: What user is doing (working, exercising, etc.)
-    - custom_mood: (Optional) User-selected mood if they feel different
-    
-    Returns:
-    - Recommended playlist with tracks
-    """
+@app.route('/refresh-token', methods=['POST'])
+def refresh_token():
+    """Refresh the access token using the refresh token."""
     try:
-        # Get request data
         data = request.json
+        refresh_token = data.get('refresh_token')
         
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
+        if not refresh_token:
+            return jsonify({'error': 'Refresh token is required'}), 400
         
-        # Extract parameters
-        mood = data.get('mood')
-        goal = data.get('goal', 'stay_same')
-        context = data.get('context', None)
-        custom_mood = data.get('custom_mood', None)
+        # Refresh the token
+        token_data = refresh_spotify_token(CLIENT_ID, CLIENT_SECRET, refresh_token)
         
-        # If user specified they feel different, use their custom mood
-        if custom_mood:
-            mood = custom_mood
+        if 'error' in token_data:
+            return jsonify({'error': token_data['error']}), 400
         
-        # Validate mood
-        if mood not in MOOD_MAPPING:
-            return jsonify({"error": f"Invalid mood: {mood}. Supported moods: {list(MOOD_MAPPING.keys())}"}), 400
+        return jsonify({
+            'access_token': token_data['access_token'],
+            'expires_in': token_data['expires_in']
+        })
+    except Exception as e:
+        print(f"Error refreshing token: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/create-playlist', methods=['POST'])
+def create_playlist():
+    """Create a playlist based on emotion and goal."""
+    try:
+        data = request.json
+        emotion = data.get('emotion', 'neutral')
+        goal = data.get('goal', 'maintain')
+        access_token = data.get('access_token')
         
-        # Get Spotify client
-        spotify = get_spotify_client()
+        if not access_token:
+            return jsonify({'error': 'Access token is required'}), 400
         
-        # Get user's music preferences
-        top_genres = get_user_top_genres(spotify)
-        recently_played = get_recently_played(spotify)
+        # Get user profile
+        user_profile = get_user_profile(access_token)
+        user_id = user_profile['id']
         
-        # Start with base mood parameters
-        params = MOOD_MAPPING[mood].copy()
+        # Get user's top genres
+        top_genres = get_user_top_genres(access_token)
         
-        # Apply goal adjustments
-        if goal in GOAL_ADJUSTMENTS:
-            for param, adjustment in GOAL_ADJUSTMENTS[goal].items():
-                if param in params:
-                    params[param] = min(1.0, max(0.0, params[param] + adjustment))
+        # Get recently played tracks
+        recently_played = get_recently_played(access_token)
         
-        # Apply context adjustments
-        if context and context in CONTEXT_ADJUSTMENTS:
-            for param, adjustment in CONTEXT_ADJUSTMENTS[context].items():
-                if param in params:
-                    params[param] = min(1.0, max(0.0, params[param] + adjustment))
-        
-        # Generate playlist
-        playlist = generate_playlist_based_on_mood(
-            spotify=spotify,
-            mood_params=params,
-            top_genres=top_genres,
+        # Generate playlist recommendations
+        playlist_tracks = generate_playlist_recommendations(
+            access_token, 
+            emotion=emotion, 
+            goal=goal, 
+            top_genres=top_genres, 
             recently_played=recently_played
         )
         
-        # Log the recommendation
-        logger.info(f"Recommended playlist for mood: {mood}, goal: {goal}, context: {context}")
+        if not playlist_tracks:
+            return jsonify({'error': 'Failed to generate playlist recommendations'}), 500
         
-        response = {
-            "mood": mood,
-            "goal": goal,
-            "context": context,
-            "playlist": playlist,
-            "timestamp": datetime.now().isoformat()
+        # Create a title for the playlist
+        emotion_emoji_map = {
+            'happy': '😊', 'sad': '😢', 'angry': '😠', 'surprised': '😮',
+            'fearful': '😨', 'disgusted': '🤢', 'contempt': '😒', 'neutral': '😐'
         }
         
-        return jsonify(response)
-        
-    except Exception as e:
-        logger.error(f"Error in music recommendation: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/user_feedback", methods=["POST"])
-def user_feedback():
-    """
-    Handle user feedback to improve future recommendations
-    
-    Expects:
-    - playlist_id: ID of the recommended playlist
-    - rating: User rating (1-5)
-    - feedback_text: (Optional) Text feedback
-    - song_ratings: (Optional) Ratings for individual songs
-    
-    Returns:
-    - Confirmation of feedback received
-    """
-    try:
-        data = request.json
-        
-        if not data:
-            return jsonify({"error": "No feedback data provided"}), 400
-        
-        # Extract feedback data
-        playlist_id = data.get('playlist_id')
-        rating = data.get('rating')
-        feedback_text = data.get('feedback_text', '')
-        song_ratings = data.get('song_ratings', {})
-        
-        # Validate data
-        if not playlist_id or not rating:
-            return jsonify({"error": "Missing required feedback parameters"}), 400
-        
-        # Log feedback
-        logger.info(f"User feedback for playlist {playlist_id}: Rating {rating}")
-        
-        # Store feedback (in a production app, you'd save this to a database)
-        feedback_data = {
-            "playlist_id": playlist_id,
-            "rating": rating,
-            "feedback_text": feedback_text,
-            "song_ratings": song_ratings,
-            "timestamp": datetime.now().isoformat()
+        goal_emoji_map = {
+            'energize': '⚡', 'maintain': '✨', 'calm': '🌊'
         }
         
-        # Here you would typically store this in a database
-        # For now, we'll just log it
-        logger.info(f"Feedback data: {json.dumps(feedback_data)}")
+        playlist_name = f"{emotion_emoji_map.get(emotion, '🎵')} {emotion.capitalize()} {goal_emoji_map.get(goal, '✨')} Playlist"
+        playlist_description = f"Music to {goal} your {emotion} mood. Created with Mood Music."
         
-        # You could also trigger model re-training or adjustments based on feedback
+        # Create the playlist
+        playlist = create_spotify_playlist(
+            access_token, 
+            user_id, 
+            playlist_name,
+            playlist_description,
+            public=False
+        )
         
-        return jsonify({"message": "Feedback received successfully"})
+        if 'id' not in playlist:
+            return jsonify({'error': 'Failed to create playlist'}), 500
         
+        # Add tracks to the playlist
+        track_uris = [track['uri'] for track in playlist_tracks]
+        add_result = add_tracks_to_playlist(access_token, playlist['id'], track_uris)
+        
+        # Construct the response
+        playlist_data = {
+            'id': playlist['id'],
+            'name': playlist['name'],
+            'description': playlist['description'],
+            'external_url': playlist['external_urls']['spotify'],
+            'images': playlist.get('images', []),
+            'tracks': playlist_tracks,
+            'playlist_id': playlist['id']
+        }
+        
+        return jsonify(playlist_data)
     except Exception as e:
-        logger.error(f"Error processing feedback: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        print(f"Error creating playlist: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
-@app.route("/sensor/heartrate", methods=["POST"])
-def receive_heartrate():
-    """
-    Endpoint to receive heart rate data from the sensor
-    
-    Expects:
-    - heart_rate: Heart rate in BPM
-    - timestamp: When the reading was taken
-    
-    Returns:
-    - Confirmation of data received
-    """
-    try:
-        data = request.json
-        
-        if not data or 'heart_rate' not in data:
-            return jsonify({"error": "No heart rate data provided"}), 400
-        
-        heart_rate = data['heart_rate']
-        timestamp = data.get('timestamp', datetime.now().isoformat())
-        
-        # Log the heart rate data
-        logger.info(f"Heart rate received: {heart_rate} BPM at {timestamp}")
-        
-        # Store the data for future use
-        # In a production app, you'd save this to a database
-        
-        return jsonify({
-            "message": "Heart rate data received",
-            "heart_rate": heart_rate,
-            "timestamp": timestamp
-        })
-        
-    except Exception as e:
-        logger.error(f"Error processing heart rate data: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+@app.route('/callback')
+def callback():
+    """Handle the OAuth callback from Spotify."""
+    # This endpoint will be hit by the browser after Spotify authentication
+    # The frontend script.js will handle extracting the code parameter
+    return app.send_static_file('index.html')
 
-if __name__ == "__main__":
-    # Ensure log directory exists
-    os.makedirs('data/logs', exist_ok=True)
-    
-    # Get port from environment variable or use default
-    port = int(os.environ.get('PORT', 5000))
-    
-    # Run the app
-    app.run(host='0.0.0.0', port=port, debug=True)
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)

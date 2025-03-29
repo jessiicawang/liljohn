@@ -3,120 +3,119 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mood Music - Emotion-Based Recommendations</title>
+    <title>Mood Music - Emotion-Based Playlist Generator</title>
     <link rel="stylesheet" href="styles.css">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="container">
         <header>
             <h1>Mood Music</h1>
-            <p class="tagline">Music that matches how you feel</p>
+            <p class="tagline">Music that matches your mood</p>
         </header>
 
-        <div id="sensor-status">
-            <div class="sensor-icon">
-                <i class="fas fa-heartbeat"></i>
-                <span id="heart-rate-status">Detecting...</span>
-            </div>
-            <div class="sensor-icon">
-                <i class="fas fa-camera"></i>
-                <span id="camera-status">Analyzing...</span>
-            </div>
-        </div>
-        
         <main>
-            <div id="mood-detection" class="card">
-                <div class="mood-container">
-                    <h2>You feel <span id="detected-mood">analyzing...</span></h2>
-                    <div id="mood-emoji">😐</div>
-                </div>
-                
-                <div id="playlist-preview">
-                    <h3>Suggested Playlist</h3>
-                    <div id="playlist-container">
-                        <div class="loader"></div>
-                        <p class="loading-text">Creating your personalized playlist...</p>
-                    </div>
-                </div>
-                
-                <button id="different-mood-btn" class="primary-btn">
-                    <i class="fas fa-music"></i> Feeling something different?
-                </button>
+            <div id="welcome-screen" class="screen active">
+                <h2>How It Works</h2>
+                <p>1. We'll capture your facial expression to detect your current mood</p>
+                <p>2. You'll tell us what you want to achieve: energize, calm down, or maintain</p>
+                <p>3. We'll create a custom playlist based on your preferences and current mood</p>
+                <button id="start-btn" class="spotify-btn">Get Started</button>
             </div>
-            
-            <div id="context-form" class="card hidden">
-                <h2>Tell us more</h2>
-                <form id="user-context-form">
-                    <div class="form-group">
-                        <label for="activity">What are you doing?</label>
-                        <select id="activity" name="activity" required>
-                            <option value="" disabled selected>Select an activity</option>
-                            <option value="working">Working/Studying</option>
-                            <option value="exercising">Exercising</option>
-                            <option value="relaxing">Relaxing</option>
-                            <option value="commuting">Commuting</option>
-                            <option value="socializing">Socializing</option>
-                            <option value="sleeping">Preparing to sleep</option>
-                            <option value="other">Other</option>
-                        </select>
+
+            <div id="camera-screen" class="screen">
+                <h2>Let's Detect Your Mood</h2>
+                <div class="camera-container">
+                    <video id="video" autoplay playsinline></video>
+                    <canvas id="canvas" style="display: none;"></canvas>
+                </div>
+                <p id="camera-status">Preparing camera...</p>
+                <div class="button-group">
+                    <button id="capture-btn" class="spotify-btn" disabled>Capture</button>
+                    <button id="skip-camera-btn" class="text-btn">Skip this step</button>
+                </div>
+            </div>
+
+            <div id="mood-detected-screen" class="screen">
+                <h2>We Detected Your Mood</h2>
+                <div class="mood-result">
+                    <div id="mood-emoji">😊</div>
+                    <p>You seem to be feeling <span id="detected-mood">happy</span>.</p>
+                </div>
+                <div class="mood-goal">
+                    <h3>What would you like to achieve?</h3>
+                    <div class="goal-buttons">
+                        <button class="goal-btn" data-goal="energize">
+                            <span class="emoji">⚡</span>
+                            <span>Energize</span>
+                        </button>
+                        <button class="goal-btn" data-goal="maintain">
+                            <span class="emoji">✨</span>
+                            <span>Stay the same</span>
+                        </button>
+                        <button class="goal-btn" data-goal="calm">
+                            <span class="emoji">🌊</span>
+                            <span>Calm down</span>
+                        </button>
                     </div>
-                    
-                    <div class="form-group">
-                        <label for="desired-mood">How do you want to feel?</label>
-                        <div class="mood-buttons">
-                            <button type="button" class="mood-btn" data-mood="energized">
-                                <span class="emoji">⚡</span>
-                                <span class="mood-label">More energized</span>
-                            </button>
-                            <button type="button" class="mood-btn" data-mood="calm">
-                                <span class="emoji">😌</span>
-                                <span class="mood-label">More calm</span>
-                            </button>
-                            <button type="button" class="mood-btn" data-mood="same">
-                                <span class="emoji">✓</span>
-                                <span class="mood-label">Stay the same</span>
-                            </button>
+                </div>
+            </div>
+
+            <div id="login-screen" class="screen">
+                <h2>Connect Your Spotify</h2>
+                <p>To create personalized playlists, we need to connect to your Spotify account.</p>
+                <button id="spotify-login-btn" class="spotify-btn">Connect with Spotify</button>
+            </div>
+
+            <div id="loading-screen" class="screen">
+                <h2>Creating Your Playlist</h2>
+                <div class="loader"></div>
+                <p>Analyzing your music preferences and crafting the perfect playlist...</p>
+            </div>
+
+            <div id="result-screen" class="screen">
+                <h2>Your Mood Playlist</h2>
+                <div class="playlist-container">
+                    <div class="playlist-header">
+                        <div class="playlist-image">
+                            <img id="playlist-cover" src="https://i.scdn.co/image/ab67706f000000032bc5e92e57984f6760a48640" alt="Playlist cover">
                         </div>
-                        <input type="hidden" id="desired-mood" name="desired-mood" required>
+                        <div class="playlist-info">
+                            <h3 id="playlist-name">Your Custom Mood Playlist</h3>
+                            <p id="playlist-description">Based on your detected mood and preferences</p>
+                        </div>
                     </div>
-                    
-                    <button type="submit" id="submit-context" class="primary-btn">
-                        <i class="fas fa-sync-alt"></i> Update My Recommendations
-                    </button>
-                </form>
-            </div>
-            
-            <div id="playlist-full" class="card hidden">
-                <div class="playlist-header">
-                    <h2 id="playlist-title">Your Personalized Playlist</h2>
-                    <button id="refresh-playlist" class="icon-btn">
-                        <i class="fas fa-redo"></i>
-                    </button>
+                    <div class="track-list" id="track-list">
+                        <!-- Tracks will be added here dynamically -->
+                    </div>
+                    <div class="playlist-actions">
+                        <button id="open-in-spotify" class="spotify-btn">Open in Spotify</button>
+                        <button id="start-over" class="text-btn">Create Another Playlist</button>
+                    </div>
                 </div>
-                <ul id="track-list">
-                    <!-- Tracks will be populated here via JavaScript -->
-                </ul>
-                <button id="open-spotify" class="secondary-btn">
-                    <i class="fab fa-spotify"></i> Open in Spotify
-                </button>
             </div>
         </main>
-        
-        <div id="sensor-modal" class="modal hidden">
-            <div class="modal-content">
-                <h2>Sensors Required</h2>
-                <p>Please allow access to:</p>
-                <ul>
-                    <li>Camera - to detect facial expressions</li>
-                    <li>Heart rate sensor - to measure physiological responses</li>
-                </ul>
-                <button id="start-sensors" class="primary-btn">Begin Sensing</button>
-                <p class="note">Your data is processed locally and not stored permanently.</p>
-            </div>
+
+        <footer>
+            <p>Powered by Spotify API and Microsoft Emotion API</p>
+        </footer>
+    </div>
+
+    <!-- Modal for authorization -->
+    <div id="auth-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>App Permissions</h2>
+            <p>This app needs access to:</p>
+            <ul>
+                <li>Your camera (to detect mood)</li>
+                <li>Your Spotify account (to create personalized playlists)</li>
+            </ul>
+            <p>We don't store your photos or facial data.</p>
+            <button id="approve-permissions" class="spotify-btn">Approve & Continue</button>
         </div>
     </div>
-    
+
     <script src="script.js"></script>
 </body>
 </html>
