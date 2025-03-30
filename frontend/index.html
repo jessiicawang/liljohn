@@ -3,28 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mood Music - Emotion-Based Playlist Generator</title>
+    <title>moodify - music for your current mood</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Mood Music</h1>
-            <p class="tagline">Music that matches your mood</p>
+            <h1>moodify</h1>
+            <p class="tagline">music for your current mood</p>
         </header>
 
         <main>
             <div id="welcome-screen" class="screen active">
                 <h2>How It Works</h2>
-                <p>1. We'll capture your facial expression to detect your current mood</p>
-                <p>2. You'll tell us what you want to achieve: energize, calm down, or maintain</p>
-                <p>3. We'll create a custom playlist based on your preferences and current mood</p>
+                <p>1. We capture your facial expression to detect your current mood</p>
+                <p>2. You tell us what you want to achieve: energize, calm down, or maintain</p>
+                <p>3. We create a custom playlist based on your current mood and preferences</p>
                 <button id="start-btn" class="spotify-btn">Get Started</button>
             </div>
 
             <div id="camera-screen" class="screen">
-                <h2>Let's Detect Your Mood</h2>
+                <h2>How are you feeling?</h2>
                 <div class="camera-container">
                     <video id="video" autoplay playsinline></video>
                     <canvas id="canvas" style="display: none;"></canvas>
@@ -37,7 +37,7 @@
             </div>
 
             <div id="mood-detected-screen" class="screen">
-                <h2>We Detected Your Mood</h2>
+                <h2>Mood Detected</h2>
                 <div class="mood-result">
                     <div id="mood-emoji">😊</div>
                     <p>You seem to be feeling <span id="detected-mood">happy</span>.</p>
@@ -51,11 +51,11 @@
                         </button>
                         <button class="goal-btn" data-goal="maintain">
                             <span class="emoji">✨</span>
-                            <span>Stay the same</span>
+                            <span>Maintain</span>
                         </button>
                         <button class="goal-btn" data-goal="calm">
                             <span class="emoji">🌊</span>
-                            <span>Calm down</span>
+                            <span>Calm</span>
                         </button>
                     </div>
                 </div>

@@ -135,7 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // State parameter for CSRF protection
         const state = generateRandomString(16);
-        localStorage.setItem('spotify_auth_state', state);
+        sessionStorage.setItem('spotify_auth_state', state);
         
         // Build the authorization URL
         const authUrl = new URL('https://accounts.spotify.com/authorize');
@@ -166,11 +166,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const urlParams = new URLSearchParams(window.location.search);
         const code = urlParams.get('code');
         const state = urlParams.get('state');
-        const storedState = localStorage.getItem('spotify_auth_state');
+        const storedState = sessionStorage.getItem('spotify_auth_state');
         
         if (code && state && state === storedState) {
             // Clear the state from storage
-            localStorage.removeItem('spotify_auth_state');
+            sessionStorage.removeItem('spotify_auth_state');
             
             // Exchange the code for tokens
             exchangeCodeForTokens(code);
