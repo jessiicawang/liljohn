@@ -116,24 +116,23 @@ document.addEventListener('DOMContentLoaded', () => {
         
         moodEmojiElement.textContent = emojiMap[emotion] || '😐';
     }
+
+    // Add this to your frontend main JavaScript file
+    window.addEventListener('load', function() {
+        // Clear any stored tokens from localStorage
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('token_expiry');
+        
+        // Remove any other auth-related items you might be storing
+        sessionStorage.clear();
+    });
     
     // Authenticate with Spotify
     function authenticateWithSpotify() {
         // Instead of creating your own auth flow here, use the backend endpoint
         window.location.href = '/login';
     }
-    
-    // Generate a random string for state parameter
-    /* function generateRandomString(length) {
-        const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-        let text = '';
-        
-        for (let i = 0; i < length; i++) {
-            text += possible.charAt(Math.floor(Math.random() * possible.length));
-        }
-        
-        return text;
-    } */
     
     // Check if we're returning from Spotify auth
     function checkForSpotifyCallback() {
@@ -158,41 +157,15 @@ document.addEventListener('DOMContentLoaded', () => {
         return false;
     }
     
-    // Exchange authorization code for access and refresh tokens
-    /* async function exchangeCodeForTokens(code) {
-        try {
-            const response = await fetch('/exchange-token', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ code })
-            });
-            
-            if (!response.ok) {
-                throw new Error('Failed to exchange code for tokens');
-            }
-            
-            const data = await response.json();
-            state.accessToken = data.access_token;
-            state.refreshToken = data.refresh_token;
-            
-            // Remove code and state from URL without refreshing the page
-            window.history.replaceState({}, document.title, window.location.pathname);
-            
-            // Continue to creating playlist
-            showScreen('loading-screen');
-            createPlaylist();
-        } catch (error) {
-            console.error('Error exchanging code for tokens:', error);
-            alert('Failed to authenticate with Spotify. Please try again.');
-            showScreen('login-screen');
-        }
-    } */
-    
     // Create a playlist based on mood and goal
     async function createPlaylist() {
         try {
+            console.log("Creating playlist with:", {
+                emotion: state.detectedEmotion || 'neutral',
+                goal: state.selectedGoal || 'maintain',
+                access_token: state.accessToken ? "Token exists (not showing for security)" : "No token!"
+            });
+            
             const response = await fetch('/create-playlist', {
                 method: 'POST',
                 headers: {
@@ -205,11 +178,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
             
-            if (!response.ok) {
-                throw new Error('Failed to create playlist');
+            // Get the text response for debugging
+            const responseText = await response.text();
+            
+            // Try to parse it as JSON
+            let data;
+            try {
+                data = JSON.parse(responseText);
+            } catch (e) {
+                console.error("Failed to parse response as JSON:", responseText);
+                throw new Error('Server returned invalid JSON');
             }
             
-            const data = await response.json();
+            if (!response.ok) {
+                console.error('Server error:', data);
+                throw new Error(data.error || 'Failed to create playlist');
+            }
+            
             state.playlistId = data.playlist_id;
             
             // Display the playlist
@@ -217,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showScreen('result-screen');
         } catch (error) {
             console.error('Error creating playlist:', error);
-            alert('Failed to create playlist. Please try again.');
+            alert('Failed to create playlist. Please try again. Error: ' + error.message);
             showScreen('mood-detected-screen');
         }
     }
@@ -229,29 +214,53 @@ document.addEventListener('DOMContentLoaded', () => {
         const playlistCover = document.getElementById('playlist-cover');
         const trackList = document.getElementById('track-list');
         
-        playlistName.textContent = playlistData.name;
-        playlistDescription.textContent = playlistData.description;
+        playlistName.textContent = playlistData.name || 'Mood Playlist';
+        playlistDescription.textContent = playlistData.description || '';
         
+        // Safely check if images exist and handle if they don't
         if (playlistData.images && playlistData.images.length > 0) {
             playlistCover.src = playlistData.images[0].url;
+            playlistCover.onerror = function() {
+                // If image loading fails, use a placeholder
+                this.src = '/img/placeholder.png';
+                console.log('Failed to load playlist cover, using placeholder');
+            };
+        } else {
+            playlistCover.src = '/img/placeholder.png';
         }
         
         // Clear previous tracks
         trackList.innerHTML = '';
+        
+        // Handle case where tracks might not be available
+        if (!playlistData.tracks || playlistData.tracks.length === 0) {
+            const noTracksMessage = document.createElement('div');
+            noTracksMessage.className = 'no-tracks-message';
+            noTracksMessage.textContent = 'No tracks found in this playlist.';
+            trackList.appendChild(noTracksMessage);
+            return;
+        }
         
         // Add tracks to the list
         playlistData.tracks.forEach((track, index) => {
             const trackItem = document.createElement('div');
             trackItem.className = 'track-item';
             
+            // Make sure album images exist
+            let albumImageUrl = '/img/placeholder.png';
+            if (track.album && track.album.images && track.album.images.length > 0) {
+                albumImageUrl = track.album.images[track.album.images.length-1].url; // Use smallest image
+            }
+            
             trackItem.innerHTML = `
                 <div class="track-number">${index + 1}</div>
                 <div class="track-image">
-                    <img src="${track.album.images[2].url}" alt="${track.album.name}">
+                    <img src="${albumImageUrl}" alt="${track.album ? track.album.name : 'Album'}" 
+                         onerror="this.src='/img/placeholder.png'">
                 </div>
                 <div class="track-info">
-                    <div class="track-name">${track.name}</div>
-                    <div class="track-artist">${track.artists.map(artist => artist.name).join(', ')}</div>
+                    <div class="track-name">${track.name || 'Unknown Track'}</div>
+                    <div class="track-artist">${track.artists ? track.artists.map(artist => artist.name).join(', ') : 'Unknown Artist'}</div>
                 </div>
             `;
             
@@ -259,9 +268,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         // Update the "Open in Spotify" button
-        openInSpotifyBtn.onclick = () => {
-            window.open(playlistData.external_url, '_blank');
-        };
+        if (playlistData.external_url) {
+            openInSpotifyBtn.onclick = () => {
+                window.open(playlistData.external_url, '_blank');
+            };
+            openInSpotifyBtn.style.display = 'block';
+        } else {
+            openInSpotifyBtn.style.display = 'none';
+        }
     }
     
     // Event Listeners
