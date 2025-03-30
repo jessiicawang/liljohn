@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, jsonify, session, render_template
+from flask import Flask, request, redirect, jsonify, session, render_template, send_from_directory
 import os
 import requests
 import base64
@@ -12,7 +12,7 @@ from playlist_logic import generate_playlist_recommendations
 # Load environment variables
 load_dotenv()
 
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__)
 
 # Configure Flask app
 app.secret_key = os.urandom(24)
@@ -25,8 +25,27 @@ REDIRECT_URI = os.getenv("REDIRECT_URI", "http://localhost:5000/callback")
 
 @app.route('/')
 def index():
-    """Serve the main application page."""
-    return app.send_static_file('index.html')
+    return send_from_directory('../frontend', 'index.html')
+
+@app.route('/<path:path>')
+def static_files(path):
+    return send_from_directory('../frontend', path)
+
+@app.route('/login')
+def login():
+    """Redirect to Spotify authorization page."""
+    # Define the scope of permissions you need
+    scope = 'user-read-private user-read-email playlist-modify-private playlist-modify-public user-top-read user-read-recently-played'
+    
+    # Generate a state value for security
+    state = str(uuid.uuid4())
+    session['state'] = state
+    
+    # Construct the authorization URL
+    auth_url = f'https://accounts.spotify.com/authorize?response_type=code&client_id={CLIENT_ID}&scope={scope}&redirect_uri={REDIRECT_URI}&state={state}'
+    
+    # Redirect to Spotify's authorization page
+    return redirect(auth_url)
 
 @app.route('/detect-emotion', methods=['POST'])
 def process_emotion():
@@ -178,9 +197,27 @@ def create_playlist():
 @app.route('/callback')
 def callback():
     """Handle the OAuth callback from Spotify."""
-    # This endpoint will be hit by the browser after Spotify authentication
-    # The frontend script.js will handle extracting the code parameter
-    return app.send_static_file('index.html')
+    # Get the authorization code
+    code = request.args.get('code')
+    state = request.args.get('state')
+    stored_state = session.get('state')
+    
+    # Validate state to prevent CSRF attacks
+    if state != stored_state:
+        return jsonify({'error': 'State verification failed'}), 403
+    
+    # Get tokens using the code
+    token_data = get_spotify_tokens(CLIENT_ID, CLIENT_SECRET, code, REDIRECT_URI)
+    
+    if 'error' in token_data:
+        return f"Error: {token_data['error']}"
+    
+    # Store tokens in session or pass to frontend
+    session['access_token'] = token_data['access_token']
+    session['refresh_token'] = token_data['refresh_token']
+    
+    # Redirect to the app with tokens
+    return redirect(f'/?access_token={token_data["access_token"]}&refresh_token={token_data["refresh_token"]}')
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, host='0.0.0.0')

@@ -9,8 +9,8 @@ load_dotenv()
 
 # Microsoft Emotion API endpoint and key
 EMOTION_API_ENDPOINT = os.getenv("EMOTION_API_ENDPOINT", 
-                                "https://your-resource-name.cognitiveservices.azure.com/face/v1.0/detect")
-EMOTION_API_KEY = os.getenv("EMOTION_API_KEY", "your-emotion-api-key")
+                                "https://prince-hack.cognitiveservices.azure.com/")
+EMOTION_API_KEY = os.getenv("EMOTION_API_KEY", "CoVawT49HTuNStWtjSOCa48M2xPXVlAh5fdbmHbZ2DKoX6LFcQCLJQQJ99BCACYeBjFXJ3w3AAAKACOGYVxz")
 
 def detect_emotion(image_base64):
     """
