@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
             video.srcObject = stream;
             state.cameraReady = true;
             captureBtn.disabled = false;
-            cameraStatus.textContent = 'Camera ready! Click "Capture" to detect your mood.';
+            cameraStatus.textContent = 'Click "Capture" to detect your mood.';
         } catch (err) {
             console.error('Error accessing camera:', err);
             cameraStatus.textContent = 'Could not access camera. Please ensure permissions are granted.';
@@ -119,38 +119,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Authenticate with Spotify
     function authenticateWithSpotify() {
-        // Client ID from your Spotify Developer Dashboard
-        const clientId = '475798783ee1433e9ab36ad3b6ddd1c0';
-        const redirectUri = 'http://localhost:5000/callback';
-        
-        // Scopes needed for the application
-        const scopes = [
-            'user-read-private',
-            'user-read-email',
-            'user-top-read',
-            'user-read-recently-played',
-            'playlist-modify-public',
-            'playlist-modify-private'
-        ].join(' ');
-        
-        // State parameter for CSRF protection
-        const state = generateRandomString(16);
-        sessionStorage.setItem('spotify_auth_state', state);
-        
-        // Build the authorization URL
-        const authUrl = new URL('https://accounts.spotify.com/authorize');
-        authUrl.searchParams.append('response_type', 'code');
-        authUrl.searchParams.append('client_id', clientId);
-        authUrl.searchParams.append('scope', scopes);
-        authUrl.searchParams.append('redirect_uri', redirectUri);
-        authUrl.searchParams.append('state', state);
-        
-        // Redirect to Spotify authorization page
-        window.location.href = authUrl.toString();
+        // Instead of creating your own auth flow here, use the backend endpoint
+        window.location.href = '/login';
     }
     
     // Generate a random string for state parameter
-    function generateRandomString(length) {
+    /* function generateRandomString(length) {
         const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
         let text = '';
         
@@ -159,21 +133,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         return text;
-    }
+    } */
     
     // Check if we're returning from Spotify auth
     function checkForSpotifyCallback() {
         const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get('code');
-        const state = urlParams.get('state');
-        const storedState = sessionStorage.getItem('spotify_auth_state');
-        
-        if (code && state && state === storedState) {
-            // Clear the state from storage
-            sessionStorage.removeItem('spotify_auth_state');
+        const accessToken = urlParams.get('access_token');
+        const refreshToken = urlParams.get('refresh_token');
+    
+        if (accessToken && refreshToken) {
+            // Store the tokens
+            state.accessToken = accessToken;
+            state.refreshToken = refreshToken;
             
-            // Exchange the code for tokens
-            exchangeCodeForTokens(code);
+            // Remove tokens from URL without refreshing the page
+            window.history.replaceState({}, document.title, window.location.pathname);
+            
+            // Continue to creating playlist
+            showScreen('loading-screen');
+            createPlaylist();
             return true;
         }
         
@@ -181,7 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Exchange authorization code for access and refresh tokens
-    async function exchangeCodeForTokens(code) {
+    /* async function exchangeCodeForTokens(code) {
         try {
             const response = await fetch('/exchange-token', {
                 method: 'POST',
@@ -210,7 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Failed to authenticate with Spotify. Please try again.');
             showScreen('login-screen');
         }
-    }
+    } */
     
     // Create a playlist based on mood and goal
     async function createPlaylist() {

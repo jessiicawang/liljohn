@@ -40,9 +40,18 @@ def login():
     # Generate a state value for security
     state = str(uuid.uuid4())
     session['state'] = state
+
+    # Temp log
+    app.logger.debug("Generated state: %s", state)
     
     # Construct the authorization URL
-    auth_url = f'https://accounts.spotify.com/authorize?response_type=code&client_id={CLIENT_ID}&scope={scope}&redirect_uri={REDIRECT_URI}&state={state}'
+    auth_url = (
+        f'https://accounts.spotify.com/authorize?response_type=code'
+        f'&client_id={CLIENT_ID}'
+        f'&scope={scope}'
+        f'&redirect_uri={REDIRECT_URI}'
+        f'&state={state}'
+    )
     
     # Redirect to Spotify's authorization page
     return redirect(auth_url)
@@ -202,6 +211,10 @@ def callback():
     state = request.args.get('state')
     stored_state = session.get('state')
     
+    # Log the state values for debugging
+    app.logger.debug("Returned state: %s", state)
+    app.logger.debug("Stored state: %s", stored_state)
+
     # Validate state to prevent CSRF attacks
     if state != stored_state:
         return jsonify({'error': 'State verification failed'}), 403
@@ -215,6 +228,9 @@ def callback():
     # Store tokens in session or pass to frontend
     session['access_token'] = token_data['access_token']
     session['refresh_token'] = token_data['refresh_token']
+
+    # Log test
+    app.logger.debug("Callback query parameters: %s", request.args)
     
     # Redirect to the app with tokens
     return redirect(f'/?access_token={token_data["access_token"]}&refresh_token={token_data["refresh_token"]}')
